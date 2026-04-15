@@ -1,0 +1,11 @@
+.weather-grid {
+  display: grid;
+  justify-content: center;
+  justify-items: center;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 200px));
+  gap: 10px;
+}
+
+.weather-card {
+    width: 180px
+}
