@@ -1,57 +1,48 @@
 <!DOCTYPE html>
 <html lang="fr">
-
 <head>
-  <meta name="description" content="Un Dashboard simple pour aider à plani" />
   <meta charset="utf-8">
-  <title>Chalk Eaters Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="author" content="">
+  <meta name="description" content="Chalk Eaters - Météo falaises en temps réel">
+  <title>Chalk Eaters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-  
-<div class="weather-grid">
 
-    <div class="weather-card">
-        <a class="weatherwidget-io" href="https://forecast7.com/fr/44d74n0d16/frontenac/" data-label_1="FRONTENAC" data-label_2="LA LIRETTE" data-theme="original" >FRONTENAC LA LIRETTE</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-mark">✕</span>
+        <span class="logo-text">CHALK EATERS</span>
+        <span class="logo-sub">Dashboard météo falaises</span>
+      </div>
+      <div class="header-meta">
+        <span class="last-update" id="last-update">Chargement…</span>
+      </div>
     </div>
+  </header>
 
-    <div class="weather-card">
-        <a class="weatherwidget-io" href="https://forecast7.com/fr/45d60n0d05/chateauneuf-sur-charente/" data-label_1="CHÂTEAUNEUF" data-label_2="LA FONT QUI PISSE" data-theme="original" >CHÂTEAUNEUF-SUR-CHARENTE LA FONT QUI PISSE</a>
-    </div>
+  <main>
 
-    <div class="weather-card">
-        <a class="weatherwidget-io" href="https://forecast7.com/fr/45d650d16/angouleme/" data-label_1="ANGOULÊME" data-label_2="LES EAUX CLAIRES" data-theme="original" >ANGOULÊME LES EAUX CLAIRES</a>
-    </div>
+    <!-- CRAGS -->
+    <div id="crags-container" class="crags-grid"></div>
 
-    <div class="weather-card">
-        <a class="weatherwidget-io" href="https://forecast7.com/fr/44d851d82/autoire/" data-label_1="AUTOIRE" data-label_2="AUTOIRE" data-theme="original" >AUTOIRE AUTOIRE</a>
-    </div>
+  </main>
 
-    <div class="weather-card">
-        <a class="weatherwidget-io" href="https://forecast7.com/fr/44d891d22/sarlat-la-caneda/" data-label_1="SARLAT-LA-CANÉDA" data-label_2="LE CEOU" data-theme="original" >SARLAT-LA-CANÉDA LE CEOU</a>
-    </div>
+  <footer class="site-footer">
+    <p>Données météo : <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> &amp; <a href="https://weatherwidget.io" target="_blank" rel="noopener">WeatherWidget.io</a> - Itinéraires : Google Maps</p>
+  </footer>
 
-    <div class="weather-card">
-        <a class="weatherwidget-io" href="https://forecast7.com/fr/43d10n0d82/montory/" data-label_1="MONTORY" data-label_2="ARGUIBELLE" data-theme="original" >MONTORY ARGUIBELLE</a>
-    </div>
-
-    <div class="weather-card">
-        <a class="weatherwidget-io" href="https://forecast7.com/fr/42d941d75/roquefixade/" data-label_1="ROQUEFIXADE" data-label_2="ROQUEFIXADE" data-theme="original" >ROQUEFIXADE METEO</a>
-    </div>
-
-
-    
-
-
-</div>
-
-
-<script>
+  <!-- WeatherWidget script -->
+  <script>
     !function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='https://weatherwidget.io/js/widget.min.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','weatherwidget-io-js');
-</script>
+  </script>
+
+  <script src="crags.js"></script>
+  <script src="app.js"></script>
 
 </body>
 </html>
