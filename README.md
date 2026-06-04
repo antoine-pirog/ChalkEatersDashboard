@@ -2,6 +2,8 @@
 
 A dashboard to prep for my next climbing expeditions. I live in Bordeaux, so all climbing sites are in southwest France.
 
+Visit on https://antoine-pirog.github.io/ChalkEatersDashboard/
+
 ## Features
 
 * **Weather widgets** : weather forecast via weatherwidget.io
