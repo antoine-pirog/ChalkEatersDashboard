@@ -367,31 +367,62 @@ function renderError(crag, msg) {
 </article>`;
 }
 
+// Retry on API error
+function renderRetrying(crag, attempt, maxRetries, delayMs) {
+  return `
+<article class="crag-card crag-card--loading" id="crag-${crag.id}">
+  <header class="crag-header">
+    <div class="crag-title-block">
+      <h2 class="crag-name">${crag.name}</h2>
+      <span class="crag-sector">${crag.sector}</span>
+    </div>
+  </header>
+  <div class="skeleton-block"></div>
+  <p style="padding: 0 16px 14px; font-family: var(--font-mono); font-size: 11px; color: var(--chalk-faint);">
+    ⟳ Tentative ${attempt}/${maxRetries} échouée — nouvelle tentative dans ${delayMs / 1000}s…
+  </p>
+</article>`;
+}
+
+async function fetchWithRetry(crag, maxRetries = 3, baseDelay = 2000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchWeather(crag.lat, crag.lon);
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+
+      const delay = baseDelay * 2 ** (attempt - 1); // 2s → 4s → 8s
+      const el = document.getElementById(`crag-${crag.id}`);
+      if (el) {
+        el.outerHTML = renderRetrying(crag, attempt, maxRetries, delay);
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
 // == Main ======================================================================
 
 async function initDashboard() {
   const container = document.getElementById("crags-container");
 
-  // Render skeletons immediately
   container.innerHTML = CRAGS.map(renderSkeleton).join("");
 
-  // Update timestamp
   const now = new Date();
   document.getElementById("last-update").textContent =
     "Mise à jour : " + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
-  // Fetch + render each crag independently so one failure doesn't block others
   await Promise.allSettled(CRAGS.map(async (crag) => {
-    const el = document.getElementById(`crag-${crag.id}`);
     try {
-      const data = await fetchWeather(crag.lat, crag.lon);
-      el.outerHTML = renderCard(crag, data);
+      const data = await fetchWithRetry(crag);
+      const el = document.getElementById(`crag-${crag.id}`);
+      if (el) el.outerHTML = renderCard(crag, data);
     } catch (err) {
-      el.outerHTML = renderError(crag, err.message);
+      const el = document.getElementById(`crag-${crag.id}`);
+      if (el) el.outerHTML = renderError(crag, err.message);
     }
   }));
 
-  // Re-init weatherwidget for newly inserted anchors
   if (window.__weatherwidget_init) {
     window.__weatherwidget_init();
   }
