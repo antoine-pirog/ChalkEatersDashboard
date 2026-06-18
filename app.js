@@ -10,7 +10,7 @@ const OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast";
 
 // How many past days to show in the history strip
 const HISTORY_DAYS = 4;
-const FORECAST_DAYS = 7;
+const FORECAST_DAYS = 5;
 
 // Aspect → ideal sun hours range (hours of direct sun the aspect receives peak season)
 const ASPECT_SUN = {
@@ -103,9 +103,9 @@ function computeRainScore(pastPrecip, currentHumidity, forecastPrecip) {
   const score = Math.max(0, Math.round(100 - pastPenalty - humidPenalty - forecastPenalty));
 
   let label, color;
-  if (score >= 75) { label = "Excellent"; color = "green"; }
-  else if (score >= 55) { label = "Bon";      color = "amber"; }
-  else if (score >= 35) { label = "Moyen";    color = "orange"; }
+  if (score >= 75)      { label = "Idéal"; color = "green"; }
+  else if (score >= 55) { label = "Correct";      color = "amber"; }
+  else if (score >= 35) { label = "Médiocre";    color = "orange"; }
   else                  { label = "Mauvais";  color = "red"; }
 
   const detail = `Pluie passée: ${pastTotal.toFixed(1)}mm · Humidité: ${Math.round(currentHumidity)}% · Pluie prévue: ${forecastTotal.toFixed(1)}mm`;
@@ -125,7 +125,8 @@ function computeSunScore(aspect, sunshineHoursToday, tempMax) {
   let score = Math.round(sunRatio * 100);
 
   // Heat penalty
-  if (tempMax > 35) score = Math.max(0, score - 30);
+  if (tempMax > 40) score = Math.max(0, score - 50);
+  else if (tempMax > 35) score = Math.max(0, score - 30);
   else if (tempMax > 32) score = Math.max(0, score - 15);
 
   // Cold penalty (< 8°C → cold fingers)
@@ -133,7 +134,7 @@ function computeSunScore(aspect, sunshineHoursToday, tempMax) {
   else if (tempMax < 8) score = Math.max(0, score - 20);
 
   let label, color;
-  if (score >= 75) { label = "Idéal";    color = "green"; }
+  if (score >= 75)      { label = "Idéal";    color = "green"; }
   else if (score >= 50) { label = "Correct"; color = "amber"; }
   else if (score >= 30) { label = "Médiocre";color = "orange"; }
   else                  { label = "Mauvais"; color = "red"; }
@@ -166,6 +167,130 @@ async function fetchWeather(lat, lon) {
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Open-Meteo error ${res.status}`);
   return res.json();
+}
+
+// == Card renderer =============================================================
+
+// ① Header — always renders, needs nothing
+function renderCardHeader(crag) {
+  const aspect = ASPECT_SUN[crag.aspect] || ASPECT_SUN["S"];
+  return `
+<header class="crag-header">
+  <div class="crag-title-block">
+    <h2 class="crag-name">${crag.name}</h2>
+    <span class="crag-sector">${crag.sector}</span>
+  </div>
+  <div class="crag-aspect-badge" title="Orientation: ${aspect.label}">
+    <span class="aspect-arrow">${aspect.icon}</span>
+    <span class="aspect-label">${crag.aspect}</span>
+  </div>
+</header>`;
+}
+
+// ② Meteo block — scores + history + forecast + widget (may fail)
+function renderMeteoBlock(crag, data) {
+  const d = data.daily;
+  const t = today();
+  const allDates = d.time;
+  const todayIdx = allDates.indexOf(t);
+
+  const hIdx = todayIdx * 24 + new Date().getHours();
+  const humSlice = data.hourly.relativehumidity_2m.slice(Math.max(0, hIdx - 2), hIdx + 1);
+  const currentHumidity = humSlice.reduce((a, b) => a + b, 0) / (humSlice.length || 1);
+
+  const pastPrecip     = d.precipitation_sum.filter((_, i) => d.time[i] < t).slice(-HISTORY_DAYS);
+  const forecastPrecip = d.precipitation_sum.filter((_, i) => d.time[i] > t).slice(0, 3);
+  const sunshineToday  = todayIdx >= 0 ? (d.sunshine_duration[todayIdx] || 0) / 3600 : 0;
+  const tempMaxToday   = todayIdx >= 0 ? d.temperature_2m_max[todayIdx] : 20;
+
+  const rainScore = computeRainScore(pastPrecip, currentHumidity, forecastPrecip);
+  const sunScore  = computeSunScore(crag.aspect, sunshineToday, tempMaxToday);
+
+  return `
+<section class="scores-row">
+  <div class="score-block">
+    <div class="score-header">
+      <span class="score-title">Rocher sec</span>
+      <span class="score-value score-color-${rainScore.color}">${rainScore.score}<small>/100</small></span>
+    </div>
+    ${scoreBar(rainScore.score, rainScore.color)}
+    <span class="score-label-pill score-pill-${rainScore.color}">${rainScore.label}</span>
+    <p class="score-detail">${rainScore.detail}</p>
+  </div>
+  <div class="score-block">
+    <div class="score-header">
+      <span class="score-title">Ensoleillement</span>
+      <span class="score-value score-color-${sunScore.color}">${sunScore.score}<small>/100</small></span>
+    </div>
+    ${scoreBar(sunScore.score, sunScore.color)}
+    <span class="score-label-pill score-pill-${sunScore.color}">${sunScore.label}</span>
+    <p class="score-detail">${sunScore.detail}</p>
+  </div>
+</section>
+
+<section class="section-block">
+  <h3 class="section-title">Historique — ${HISTORY_DAYS} derniers jours</h3>
+  <div class="history-strip">
+    ${renderHistory(d.time, d.precipitation_sum, d.weathercode, d.temperature_2m_max, d.temperature_2m_min)}
+  </div>
+</section>
+
+<section class="section-block">
+  <h3 class="section-title">Prévisions — 5 jours</h3>
+  <div class="forecast-strip">
+    ${renderForecast(d.time, d.precipitation_sum, d.weathercode, d.temperature_2m_max, d.temperature_2m_min, d.sunshine_duration)}
+  </div>
+</section>`;
+}
+
+function renderMeteoForecast(crag) {
+  return `
+<section class="section-block section-widget">
+  <h3 class="section-title">Widget météo détaillé</h3>
+  <div class="widget-wrap">
+    <a class="weatherwidget-io"
+       href="${crag.weatherUrl}"
+       data-label_1="${crag.name.toUpperCase()}"
+       data-label_2="${crag.sector.toUpperCase()}"
+       data-theme="original">${crag.name} ${crag.sector}</a>
+  </div>
+</section>`;
+}
+
+function renderMeteoError(errMessage) {
+  return `
+<div class="section-block">
+  <p class="error-msg">⚠ Données météo indisponibles.<br><small>${errMessage}</small></p>
+</div>`;
+}
+
+function renderMeteoSkeleton() {
+  return `
+<div class="skeleton-block"></div>
+<div class="skeleton-block skeleton-block--short"></div>
+<div class="skeleton-block"></div>`;
+}
+
+function renderMeteoRetrying(attempt, maxRetries, delayMs) {
+  return `
+<div class="skeleton-block"></div>
+<p style="padding: 0 16px 14px; font-family: var(--font-mono); font-size: 11px; color: var(--chalk-faint);">
+  ⟳ Tentative ${attempt}/${maxRetries} échouée — nouvelle tentative dans ${delayMs / 1000}s…
+</p>`;
+}
+
+// ③ Footer — always renders, needs nothing
+function renderCardFooter(crag) {
+  return `
+<footer class="crag-footer">
+  <span class="crag-address">📍 ${crag.address}</span>
+  <a class="itinerary-btn" href="${crag.mapsUrl}" target="_blank" rel="noopener">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M3 11l19-9-9 19-2-8-8-2z"/>
+    </svg>
+    Itinéraire
+  </a>
+</footer>`;
 }
 
 // == Render helpers ============================================================
@@ -220,167 +345,17 @@ function renderForecast(dates, precip, codes, tmax, tmin, sunshine) {
   }).join("");
 }
 
-// == Card renderer =============================================================
+// == Card shell ================================================================
 
-function renderCard(crag, data) {
-  const d = data.daily;
-  const t = today();
-
-  // Indices
-  const allDates = d.time; // array of "YYYY-MM-DD"
-  const todayIdx = allDates.indexOf(t);
-
-  // Current humidity: average of last 3 hours
-  const hIdx = todayIdx * 24 + new Date().getHours();
-  const humSlice = data.hourly.relativehumidity_2m.slice(Math.max(0, hIdx - 2), hIdx + 1);
-  const currentHumidity = humSlice.reduce((a, b) => a + b, 0) / (humSlice.length || 1);
-
-  // Past precipitation (days before today)
-  const pastPrecip = d.precipitation_sum
-    .filter((_, i) => d.time[i] < t)
-    .slice(-HISTORY_DAYS);
-
-  // Forecast precipitation (next 3 days)
-  const forecastPrecip = d.precipitation_sum
-    .filter((_, i) => d.time[i] > t)
-    .slice(0, 3);
-
-  // Sunshine today
-  const sunshineToday = todayIdx >= 0 ? (d.sunshine_duration[todayIdx] || 0) / 3600 : 0;
-  const tempMaxToday = todayIdx >= 0 ? d.temperature_2m_max[todayIdx] : 20;
-
-  const rainScore = computeRainScore(pastPrecip, currentHumidity, forecastPrecip);
-  const sunScore  = computeSunScore(crag.aspect, sunshineToday, tempMaxToday);
-
-  const aspect = ASPECT_SUN[crag.aspect] || ASPECT_SUN["S"];
-
+// Renders the persistent card frame with a named slot for the meteo block.
+// Header and footer are injected immediately; the meteo div is filled async.
+function renderCardShell(crag) {
   return `
 <article class="crag-card" id="crag-${crag.id}">
-
-  <header class="crag-header">
-    <div class="crag-title-block">
-      <h2 class="crag-name">${crag.name}</h2>
-      <span class="crag-sector">${crag.sector}</span>
-    </div>
-    <div class="crag-aspect-badge" title="Orientation: ${aspect.label}">
-      <span class="aspect-arrow">${aspect.icon}</span>
-      <span class="aspect-label">${crag.aspect}</span>
-    </div>
-  </header>
-
-  <!-- == Scores == -->
-  <section class="scores-row">
-    <div class="score-block">
-      <div class="score-header">
-        <span class="score-title">Rocher sec</span>
-        <span class="score-value score-color-${rainScore.color}">${rainScore.score}<small>/100</small></span>
-      </div>
-      ${scoreBar(rainScore.score, rainScore.color)}
-      <span class="score-label-pill score-pill-${rainScore.color}">${rainScore.label}</span>
-      <p class="score-detail">${rainScore.detail}</p>
-    </div>
-    <div class="score-block">
-      <div class="score-header">
-        <span class="score-title">Ensoleillement</span>
-        <span class="score-value score-color-${sunScore.color}">${sunScore.score}<small>/100</small></span>
-      </div>
-      ${scoreBar(sunScore.score, sunScore.color)}
-      <span class="score-label-pill score-pill-${sunScore.color}">${sunScore.label}</span>
-      <p class="score-detail">${sunScore.detail}</p>
-    </div>
-  </section>
-
-  <!-- == History == -->
-  <section class="section-block">
-    <h3 class="section-title">Historique - ${HISTORY_DAYS} derniers jours</h3>
-    <div class="history-strip">
-      ${renderHistory(d.time, d.precipitation_sum, d.weathercode, d.temperature_2m_max, d.temperature_2m_min)}
-    </div>
-  </section>
-
-  <!-- == Forecast == -->
-  <section class="section-block">
-    <h3 class="section-title">Prévisions - 5 jours</h3>
-    <div class="forecast-strip">
-      ${renderForecast(d.time, d.precipitation_sum, d.weathercode, d.temperature_2m_max, d.temperature_2m_min, d.sunshine_duration)}
-    </div>
-  </section>
-
-  <!-- == WeatherWidget (current conditions + full forecast widget) == -->
-  <section class="section-block section-widget">
-    <h3 class="section-title">Widget météo détaillé</h3>
-    <div class="widget-wrap">
-      <a class="weatherwidget-io"
-         href="${crag.weatherUrl}"
-         data-label_1="${crag.name.toUpperCase()}"
-         data-label_2="${crag.sector.toUpperCase()}"
-         data-theme="original">${crag.name} ${crag.sector}</a>
-    </div>
-  </section>
-
-  <!-- == Itinerary == -->
-  <footer class="crag-footer">
-    <span class="crag-address">📍 ${crag.address}</span>
-    <a class="itinerary-btn" href="${crag.mapsUrl}" target="_blank" rel="noopener">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
-      Itinéraire
-    </a>
-  </footer>
-
-</article>`;
-}
-
-// Skeleton while loading
-function renderSkeleton(crag) {
-  return `
-<article class="crag-card crag-card--loading" id="crag-${crag.id}">
-  <header class="crag-header">
-    <div class="crag-title-block">
-      <h2 class="crag-name">${crag.name}</h2>
-      <span class="crag-sector">${crag.sector}</span>
-    </div>
-  </header>
-  <div class="skeleton-block"></div>
-  <div class="skeleton-block skeleton-block--short"></div>
-  <div class="skeleton-block"></div>
-</article>`;
-}
-
-// Error state
-function renderError(crag, msg) {
-  return `
-<article class="crag-card crag-card--error" id="crag-${crag.id}">
-  <header class="crag-header">
-    <div class="crag-title-block">
-      <h2 class="crag-name">${crag.name}</h2>
-      <span class="crag-sector">${crag.sector}</span>
-    </div>
-  </header>
-  <p class="error-msg">⚠ Impossible de charger les données météo.<br><small>${msg}</small></p>
-  <footer class="crag-footer">
-    <span class="crag-address">📍 ${crag.address}</span>
-    <a class="itinerary-btn" href="${crag.mapsUrl}" target="_blank" rel="noopener">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
-      Itinéraire
-    </a>
-  </footer>
-</article>`;
-}
-
-// Retry on API error
-function renderRetrying(crag, attempt, maxRetries, delayMs) {
-  return `
-<article class="crag-card crag-card--loading" id="crag-${crag.id}">
-  <header class="crag-header">
-    <div class="crag-title-block">
-      <h2 class="crag-name">${crag.name}</h2>
-      <span class="crag-sector">${crag.sector}</span>
-    </div>
-  </header>
-  <div class="skeleton-block"></div>
-  <p style="padding: 0 16px 14px; font-family: var(--font-mono); font-size: 11px; color: var(--chalk-faint);">
-    ⟳ Tentative ${attempt}/${maxRetries} échouée — nouvelle tentative dans ${delayMs / 1000}s…
-  </p>
+  ${renderCardHeader(crag)}
+  <div id="meteo-ske-${crag.id}">${renderMeteoSkeleton()}</div>
+  <div id="meteo-for-${crag.id}">${renderMeteoForecast(crag)}</div>
+  ${renderCardFooter(crag)}
 </article>`;
 }
 
@@ -390,12 +365,9 @@ async function fetchWithRetry(crag, maxRetries = 3, baseDelay = 2000) {
       return await fetchWeather(crag.lat, crag.lon);
     } catch (err) {
       if (attempt === maxRetries) throw err;
-
-      const delay = baseDelay * 2 ** (attempt - 1); // 2s → 4s → 8s
-      const el = document.getElementById(`crag-${crag.id}`);
-      if (el) {
-        el.outerHTML = renderRetrying(crag, attempt, maxRetries, delay);
-      }
+      const delay = baseDelay * 2 ** (attempt - 1);
+      const el = document.getElementById(`meteo-ske-${crag.id}`);
+      if (el) el.innerHTML = renderMeteoRetrying(attempt, maxRetries, delay);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -406,20 +378,21 @@ async function fetchWithRetry(crag, maxRetries = 3, baseDelay = 2000) {
 async function initDashboard() {
   const container = document.getElementById("crags-container");
 
-  container.innerHTML = CRAGS.map(renderSkeleton).join("");
+  // Render all card shells immediately — header and footer are live from the start
+  container.innerHTML = CRAGS.map(renderCardShell).join("");
 
   const now = new Date();
   document.getElementById("last-update").textContent =
     "Mise à jour : " + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
+  // Fetch meteo for each crag independently; only the meteo slot is affected by failure
   await Promise.allSettled(CRAGS.map(async (crag) => {
+    const slot = document.getElementById(`meteo-ske-${crag.id}`);
     try {
       const data = await fetchWithRetry(crag);
-      const el = document.getElementById(`crag-${crag.id}`);
-      if (el) el.outerHTML = renderCard(crag, data);
+      slot.innerHTML = renderMeteoBlock(crag, data);
     } catch (err) {
-      const el = document.getElementById(`crag-${crag.id}`);
-      if (el) el.outerHTML = renderError(crag, err.message);
+      slot.innerHTML = renderMeteoError(err.message);
     }
   }));
 
